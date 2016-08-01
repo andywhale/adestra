@@ -97,6 +97,18 @@ function adestra_webform_summary($node) {
     t('Operations'),
   )
   );
+  
+  $render['campaign_table'] = array(
+  '#theme' => 'table',
+  '#caption' => t('Campaign Handling'),
+  '#header' => array(
+    t('Component'),
+    t('Type'),
+    t('Value Provided'),
+    t('Value Not Provided'),
+    t('Operations'),
+  )
+  );
 
   foreach ($node->webform['components'] as $cid => $component) {
 
@@ -150,6 +162,22 @@ function adestra_webform_summary($node) {
         'empty' => implode("<br />", $unsub_empty),
         'not_empty' => implode("<br />", $unsub_not_empty),
         'edit' => l(t('Edit'), 'node/' . $node->nid . '/webform/components/' . $cid, array('fragment' => 'edit-extra-adestra-attribute-type', 'query' => drupal_get_destination())),
+    );
+
+    $campaign_empty = array();
+    if (!empty($component['extra']['adestra']['send']['not_empty']['campaigns'])) {
+      $campaign_empty[]= t('Campaign') . " =><br />" . $component['extra']['adestra']['send']['not_empty']['campaigns'];
+    }
+    $campaign_not_empty = array();
+    if (!empty($component['extra']['adestra']['send']['empty']['campaigns'])) {
+      $campaign_not_empty[]= t('Campaign') . " =><br />" . $component['extra']['adestra']['send']['empty']['campaigns'];
+    }
+    $render['campaign_table']['#rows'][$cid] = array(
+      'name' => $component['name'],
+      'type' => $component['type'],
+      'empty' => implode("<br />", $campaign_empty),
+      'not_empty' => implode("<br />", $campaign_not_empty),
+      'edit' => l(t('Edit'), 'node/' . $node->nid . '/webform/components/' . $cid, array('fragment' => 'edit-extra-adestra-attribute-type', 'query' => drupal_get_destination())),
     );
   }
   $render['markup'] = array(
