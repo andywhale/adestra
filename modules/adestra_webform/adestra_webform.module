@@ -172,7 +172,7 @@ function adestra_webform_form_webform_component_edit_form_alter(&$form, &$form_s
     '#description' => t('Pipe delimited list of list ids to unsubscribe from. E.g 3|4. The following tokens are available: @placeholders', array('@placeholders' => $unselected_placeholder)),
     '#default_value' => (!empty($component['extra']['adestra']['subscribe']['empty']['unsub_lists']) ? $component['extra']['adestra']['subscribe']['empty']['unsub_lists'] : ''),
   );
-  
+
   //UNSUB LIST HANDLERS
   $form['extra']['adestra']['unsub'] = array(
       '#type' => 'fieldset',
@@ -220,25 +220,55 @@ function adestra_webform_form_webform_component_edit_form_alter(&$form, &$form_s
       '#description' => t('Pipe delimited list of unsublist ids to unsubscribe from. E.g 3|4. The following tokens are available: @placeholders', array('@placeholders' => $unselected_placeholder)),
       '#default_value' => (!empty($component['extra']['adestra']['unsub']['empty']['unsub_unsublists']) ? $component['extra']['adestra']['unsub']['empty']['unsub_unsublists'] : ''),
   );
+
+  //CAMPAIGN HANDLERS
+  $form['extra']['adestra']['send'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Campaign Handlers'),
+    '#collapsible' => TRUE,
+  );
+  $form['extra']['adestra']['send']['not_empty'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('If a value has been @action', array('@action' => $action)),
+    '#collapsible' => TRUE,
+    '#collapsed' => (empty($component['extra']['adestra']['send']['not_empty']['campaigns']) && empty($component['extra']['adestra']['send']['not_empty']['campaigns'])),
+  );
+  $form['extra']['adestra']['send']['not_empty']['campaigns'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Campaign(s) to send'),
+    '#description' => t('Pipe delimited list of list campaign ids to send to. E.g 1|2. The following tokens are available: @placeholders', array('@placeholders' => $value_placeholder . " " . $unselected_placeholder)),
+    '#default_value' => (!empty($component['extra']['adestra']['send']['not_empty']['campaigns']) ? $component['extra']['adestra']['send']['not_empty']['campaigns'] : ''),
+  );
+  $form['extra']['adestra']['send']['empty'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('If a value has not been @action', array('@action' => $action)),
+    '#collapsible' => TRUE,
+    '#states' => array(
+      'invisible' => array(
+        'input[name^="mandatory"]' => array('checked' => TRUE),
+      ),
+    ),
+    '#collapsed' => (empty($component['extra']['adestra']['send']['empty']['campaigns']) && empty($component['extra']['adestra']['send']['empty']['unsub_lists'])),
+  );
+  $form['extra']['adestra']['send']['empty']['campaigns'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Campaign(s) to send'),
+    '#description' => t('Pipe delimited list of campaign ids to send to. E.g 3|4. The following tokens are available: @placeholders', array('@placeholders' => $unselected_placeholder)),
+    '#default_value' => (!empty($component['extra']['adestra']['send']['empty']['campaigns']) ? $component['extra']['adestra']['send']['empty']['campaigns'] : ''),
+  );
 }
 
 /**
  * Implements hook_webform_submission_insert().
  */
 function adestra_webform_webform_submission_insert($node, $submission) {
-
-//  print "<pre>";
-//  print_r($submission);
-//  print "</pre>";
-//  exit;
-
-
   $attributes = array();
   $subscribe_lists = array();
   $unsubscribe_lists = array();
   $subscribe_unsublists = array();
   $unsubscribe_unsublists = array();
-  
+  $campaign_lists = array();
+
   foreach ($node->webform['components'] as $cid => $component) {
     if (in_array($component['type'], array('file', 'fieldset', 'grid', 'pagebreak'))) {
       continue;
@@ -255,9 +285,10 @@ function adestra_webform_webform_submission_insert($node, $submission) {
       $unselected = array();
     }
 
-    $value = $submission->data[$cid]['value'];
+    $value = $submission->data[$cid];
+
     //NON EMPTY HANDLING
-    if (!empty($value)) {
+    if (!empty($value[0])) {
       //NON EMPTY ATTRIBUTE HANDLING
       if (!empty($component['extra']['adestra']['attribute']['not_empty']['attribute'])  && !empty($component['extra']['adestra']['attribute']['not_empty']['value'])) {
         $attribute_name = $component['extra']['adestra']['attribute']['not_empty']['attribute'];
@@ -320,6 +351,20 @@ function adestra_webform_webform_submission_insert($node, $submission) {
         }
         $unsubscribe_unsublists = array_merge($unsubscribe_unsublists, array_filter(explode("|", $unsub_unsublists)));
       }
+      //NON EMPTY CAMPAIGN SEND HANDLING
+      if (!empty($component['extra']['adestra']['send']['not_empty']['campaigns'])) {
+        $lists = array();
+        $campaigns = $component['extra']['adestra']['send']['not_empty']['campaigns'];
+        if (strrpos($campaigns, "%value") !== FALSE) {
+          $campaign_lists = array_merge($campaign_lists, $value);
+          $campaigns = str_replace("%value", "", $campaigns);
+        }
+        if (!empty($campaigns) && strpos($campaigns, "%unselected" !== FALSE)) {
+          $campaign_lists = array_merge($campaign_lists, $unselected);
+          $campaigns = str_replace("%unselected", "", $campaigns);
+        }
+        $campaign_lists = array_merge($campaign_lists, array_filter(explode("|", $campaigns)));
+      }
     }
     //EMPTY HANDLING
     else{
@@ -369,13 +414,27 @@ function adestra_webform_webform_submission_insert($node, $submission) {
         }
         $unsubscribe_unsublists = array_merge($unsubscribe_unsublists, array_filter(explode("|", $unsub_unsublists)));
       }
+      //EMPTY CAMPAIGN SEND HANDLING
+      if (!empty($component['extra']['adestra']['send']['empty']['campaigns'])) {
+        $lists = array();
+        $campaigns = $component['extra']['adestra']['subscribe']['empty']['campaigns'];
+        if (strpos($campaigns, "%unselected" !== FALSE)) {
+          $campaign_lists = array_merge($campaign_lists, $unselected);
+          $campaigns = str_replace("%unselected", "", $campaigns);
+        }
+        $campaign_lists += array_merge($campaign_lists, array_filter(explode("|", $campaigns)));
+      }
     }
+
   }
 
   if (isset($attributes['email'])) {
       $id = adestra_create_contact(NULL, $attributes, 'email');
       adestra_subscribe_contact_multiple($id, $subscribe_lists, $unsubscribe_unsublists);
       adestra_unsubscribe_contact_multiple($id, $unsubscribe_lists, $subscribe_unsublists);
+      foreach ($campaign_lists as $campaign_id) {
+        adestra_send_email($attributes, $campaign_id, array());
+      }
   }
   else{
     watchdog('adestra_webform', "Webform @nid missing email component", array('@nid' => $node->nid), WATCHDOG_NOTICE);
